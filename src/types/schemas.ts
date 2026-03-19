@@ -158,6 +158,50 @@ export const updatePagePropertiesTool: Tool = {
   },
 };
 
+export const createPageTool: Tool = {
+  name: "notion_create_page",
+  description:
+    "Create a new page in Notion. Can create a sub-page under an existing page, or a new item in a database. Supports setting title, icon, and initial content blocks.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      parent_id: {
+        type: "string",
+        description:
+          "The ID of the parent page or database." + commonIdDescription,
+      },
+      parent_type: {
+        type: "string",
+        enum: ["page_id", "database_id"],
+        description:
+          'Type of parent: "page_id" for sub-pages, "database_id" for database items. Defaults to "page_id".',
+      },
+      title: {
+        type: "string",
+        description: "Title of the new page.",
+      },
+      children: {
+        type: "array",
+        description:
+          "Optional array of block objects for initial page content.",
+        items: blockObjectSchema,
+      },
+      properties: {
+        type: "object",
+        description:
+          "Optional properties for database items (e.g. tags, dates).",
+      },
+      icon: {
+        type: "object",
+        description:
+          'Optional icon. Example: {"type": "emoji", "emoji": "📕"}',
+      },
+      format: formatParameter,
+    },
+    required: ["parent_id", "title"],
+  },
+};
+
 // Users tools
 export const listAllUsersTool: Tool = {
   name: "notion_list_all_users",

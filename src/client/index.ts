@@ -246,6 +246,47 @@ export class NotionClientWrapper {
     return response.json();
   }
 
+  async createPage(
+    parent_id: string,
+    parent_type: "page_id" | "database_id",
+    title: string,
+    children?: Partial<BlockResponse>[],
+    properties?: Record<string, any>,
+    icon?: { type: string; emoji?: string }
+  ): Promise<PageResponse> {
+    const body: Record<string, any> = {
+      parent: { [parent_type]: parent_id },
+    };
+
+    if (parent_type === "page_id") {
+      // Page parent: title goes in properties as a title property
+      body.properties = {
+        title: [{ text: { content: title } }],
+        ...properties,
+      };
+    } else {
+      // Database parent: title goes in properties.Name or provided properties
+      body.properties = properties || {
+        Name: { title: [{ text: { content: title } }] },
+      };
+    }
+
+    if (children && children.length > 0) {
+      body.children = children;
+    }
+    if (icon) {
+      body.icon = icon;
+    }
+
+    const response = await fetch(`${this.baseUrl}/pages`, {
+      method: "POST",
+      headers: this.headers,
+      body: JSON.stringify(body),
+    });
+
+    return response.json();
+  }
+
   async createComment(
     parent?: { page_id: string },
     discussion_id?: string,

@@ -4,6 +4,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequest,
   CallToolRequestSchema,
@@ -13,11 +14,12 @@ import { NotionClientWrapper } from "../client/index.js";
 import { filterTools } from "../utils/index.js";
 import * as schemas from "../types/schemas.js";
 import * as args from "../types/args.js";
+import http from "http";
 
 /**
- * Start the MCP server
+ * Create and configure the MCP server (shared between stdio and HTTP)
  */
-export async function startServer(
+function createServer(
   notionToken: string,
   enabledToolsSet: Set<string>,
   enableMarkdownConversion: boolean
@@ -25,7 +27,7 @@ export async function startServer(
   const server = new Server(
     {
       name: "Notion MCP Server",
-      version: "1.0.0",
+      version: "1.1.0",
     },
     {
       capabilities: {
@@ -131,6 +133,25 @@ export async function startServer(
             response = await notionClient.updatePageProperties(
               args.page_id,
               args.properties
+            );
+            break;
+          }
+
+          case "notion_create_page": {
+            const a = request.params
+              .arguments as unknown as args.CreatePageArgs;
+            if (!a.parent_id || !a.title) {
+              throw new Error(
+                "Missing required arguments: parent_id and title"
+              );
+            }
+            response = await notionClient.createPage(
+              a.parent_id,
+              a.parent_type || "page_id",
+              a.title,
+              a.children,
+              a.properties,
+              a.icon
             );
             break;
           }
@@ -268,9 +289,6 @@ export async function startServer(
         const requestedFormat =
           (request.params.arguments as any)?.format || "markdown";
 
-        // Only convert to markdown if both conditions are met:
-        // 1. The requested format is markdown
-        // 2. The experimental markdown conversion is enabled via environment variable
         if (enableMarkdownConversion && requestedFormat === "markdown") {
           const markdown = await notionClient.toMarkdown(response);
           return {
@@ -308,6 +326,7 @@ export async function startServer(
       schemas.updateBlockTool,
       schemas.retrievePageTool,
       schemas.updatePagePropertiesTool,
+      schemas.createPageTool,
       schemas.listAllUsersTool,
       schemas.retrieveUserTool,
       schemas.retrieveBotUserTool,
@@ -325,6 +344,73 @@ export async function startServer(
     };
   });
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  return server;
+}
+
+/**
+ * Start the MCP server (stdio or HTTP based on transport arg)
+ */
+export async function startServer(
+  notionToken: string,
+  enabledToolsSet: Set<string>,
+  enableMarkdownConversion: boolean,
+  transportType: "stdio" | "http" = "stdio",
+  httpPort: number = 3000,
+  authToken?: string
+) {
+  if (transportType === "http") {
+    // Streamable HTTP transport for remote access
+    const server = createServer(notionToken, enabledToolsSet, enableMarkdownConversion);
+
+    const httpServer = http.createServer(async (req, res) => {
+      // CORS headers
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id");
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      // Auth check
+      if (authToken) {
+        const auth = req.headers.authorization;
+        if (!auth || auth !== `Bearer ${authToken}`) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+
+      const url = new URL(req.url || "/", `http://localhost:${httpPort}`);
+
+      if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined, // stateless
+        });
+        await server.connect(transport);
+        await transport.handleRequest(req, res);
+      } else if (url.pathname === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok", tools: enabledToolsSet.size || "all" }));
+      } else {
+        res.writeHead(404);
+        res.end("Not found. Use /mcp for MCP endpoint or /health for status.");
+      }
+    });
+
+    httpServer.listen(httpPort, "0.0.0.0", () => {
+      console.error(`🚀 Notion MCP Server (HTTP) listening on port ${httpPort}`);
+      console.error(`📡 MCP endpoint: http://0.0.0.0:${httpPort}/mcp`);
+      console.error(`🔧 Enabled tools: ${enabledToolsSet.size || "all"}`);
+      console.error(`📝 Markdown conversion: ${enableMarkdownConversion}`);
+    });
+  } else {
+    // Classic stdio transport for local use
+    const server = createServer(notionToken, enabledToolsSet, enableMarkdownConversion);
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+  }
 }

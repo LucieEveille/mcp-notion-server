@@ -1,9 +1,9 @@
 {
-  "name": "@suekou/mcp-notion-server",
-  "version": "1.2.4",
-  "description": "MCP server for interacting with Notion API based on Node",
+  "name": "@lucie-eveille/mcp-notion-server",
+  "version": "2.0.0",
+  "description": "露露的精简版 Notion MCP Server — block 级精准操作 + Streamable HTTP 远程连接",
   "license": "MIT",
-  "author": "Kosuke Suenaga (https://github.com/suekou/mcp-notion-server)",
+  "author": "Lucie Éveille (forked from suekou/mcp-notion-server)",
   "type": "module",
   "main": "build/index.js",
   "bin": {
@@ -17,6 +17,8 @@
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepare": "npm run build",
     "watch": "tsc --watch",
+    "start": "node build/index.js --transport http",
+    "start:stdio": "node build/index.js",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * All API endpoints support both JSON and Markdown response formats.
- * Set the "format" parameter to "json" or "markdown" (default is "markdown").
- * - Use "markdown" for human-readable output when only reading content
- * - Use "json" when you need to process or modify the data programmatically
+ * Notion MCP Server — 露露的精简版
+ * 
+ * 支持两种传输模式：
+ * - stdio: 本地运行（默认）
+ * - http:  远程部署，Streamable HTTP，供 Claude 等客户端远程连接
  *
- * Command-line Arguments:
- * --enabledTools: Comma-separated list of tools to enable (e.g. "notion_retrieve_page,notion_query_database")
+ * 命令行参数：
+ * --transport: "stdio" (默认) 或 "http"
+ * --port: HTTP 端口（默认 3000，也读 PORT 环境变量）
+ * --enabledTools: 逗号分隔的工具列表（不指定则启用全部）
  *
- * Environment Variables:
- * - NOTION_API_TOKEN: Required. Your Notion API integration token.
- * - NOTION_MARKDOWN_CONVERSION: Optional. Set to "true" to enable
- *   experimental Markdown conversion. If not set or set to any other value,
- *   all responses will be in JSON format regardless of the "format" parameter.
+ * 环境变量：
+ * - NOTION_API_TOKEN: 必填，Notion Integration Token
+ * - NOTION_MARKDOWN_CONVERSION: 可选，"true" 启用 Markdown 转换（省 token）
+ * - PORT: HTTP 端口（被 --port 覆盖）
+ * - MCP_AUTH_TOKEN: 可选，HTTP 模式的 Bearer Token 鉴权
  */
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -23,6 +26,16 @@ const argv = yargs(hideBin(process.argv))
   .option("enabledTools", {
     type: "string",
     description: "Comma-separated list of tools to enable",
+  })
+  .option("transport", {
+    type: "string",
+    choices: ["stdio", "http"],
+    default: "stdio",
+    description: "Transport type: stdio (local) or http (remote)",
+  })
+  .option("port", {
+    type: "number",
+    description: "HTTP port (default: 3000 or PORT env var)",
   })
   .parseSync();
 
@@ -48,5 +61,16 @@ async function main() {
     process.exit(1);
   }
 
-  await startServer(notionToken, enabledToolsSet, enableMarkdownConversion);
+  const transportType = (argv.transport as "stdio" | "http") || "stdio";
+  const httpPort = argv.port || parseInt(process.env.PORT || "3000", 10);
+  const authToken = process.env.MCP_AUTH_TOKEN || undefined;
+
+  await startServer(
+    notionToken,
+    enabledToolsSet,
+    enableMarkdownConversion,
+    transportType,
+    httpPort,
+    authToken
+  );
 }
