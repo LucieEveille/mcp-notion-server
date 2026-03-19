@@ -3,11 +3,11 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install
+RUN npm install --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npx tsc
+RUN npx tsc && node -e "require('fs').chmodSync('build/index.js', '755')"
 
 ENV PORT=3000
 ENV NOTION_MARKDOWN_CONVERSION=true
