@@ -359,9 +359,7 @@ export async function startServer(
   authToken?: string
 ) {
   if (transportType === "http") {
-    // Streamable HTTP transport for remote access
-    const server = createServer(notionToken, enabledToolsSet, enableMarkdownConversion);
-
+    // Streamable HTTP transport for remote access (stateless mode)
     const httpServer = http.createServer(async (req, res) => {
       // CORS headers
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -388,17 +386,48 @@ export async function startServer(
         const auth = req.headers.authorization;
         if (!auth || auth !== `Bearer ${authToken}`) {
           res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "未授权" }));
+          res.end(JSON.stringify({ error: "Unauthorized" }));
           return;
         }
       }
 
       if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
+        // Stateless mode: reject GET and DELETE (no sessions)
+        if (req.method === "GET" || req.method === "DELETE") {
+          res.writeHead(405, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Method not allowed." },
+            id: null,
+          }));
+          return;
+        }
+
+        // Create fresh server + transport per request (stateless)
+        const server = createServer(notionToken, enabledToolsSet, enableMarkdownConversion);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // stateless
         });
-        await server.connect(transport);
-        await transport.handleRequest(req, res);
+
+        res.on("close", () => {
+          transport.close().catch(() => {});
+          server.close().catch(() => {});
+        });
+
+        try {
+          await server.connect(transport);
+          await transport.handleRequest(req, res);
+        } catch (error) {
+          console.error("Error handling MCP request:", error);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              jsonrpc: "2.0",
+              error: { code: -32603, message: "Internal server error" },
+              id: null,
+            }));
+          }
+        }
       } else {
         res.writeHead(404);
         res.end("Not found. Use /mcp for MCP endpoint or /health for status.");
