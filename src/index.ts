@@ -39,8 +39,9 @@ const argv = yargs(hideBin(process.argv))
   })
   .parseSync();
 
+const enabledToolsRaw = argv.enabledTools || process.env.ENABLED_TOOLS || "";
 const enabledToolsSet = new Set(
-  argv.enabledTools ? argv.enabledTools.split(",") : []
+  enabledToolsRaw ? enabledToolsRaw.split(",").map((s: string) => s.trim()).filter(Boolean) : []
 );
 
 // if test environment, do not execute main()
