@@ -2,15 +2,12 @@ FROM node:20-slim
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install
 
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build
-
-# 构建完成后清理 dev 依赖，减小镜像体积
-RUN npm prune --omit=dev
+RUN npx tsc
 
 ENV PORT=3000
 ENV NOTION_MARKDOWN_CONVERSION=true
