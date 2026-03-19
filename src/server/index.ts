@@ -374,17 +374,24 @@ export async function startServer(
         return;
       }
 
-      // Auth check
+      const url = new URL(req.url || "/", `http://localhost:${httpPort}`);
+
+      // Health check — no auth required
+      if (url.pathname === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok", tools: enabledToolsSet.size || "all" }));
+        return;
+      }
+
+      // Auth check (only for /mcp and other endpoints)
       if (authToken) {
         const auth = req.headers.authorization;
         if (!auth || auth !== `Bearer ${authToken}`) {
           res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Unauthorized" }));
+          res.end(JSON.stringify({ error: "未授权" }));
           return;
         }
       }
-
-      const url = new URL(req.url || "/", `http://localhost:${httpPort}`);
 
       if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
         const transport = new StreamableHTTPServerTransport({
@@ -392,9 +399,6 @@ export async function startServer(
         });
         await server.connect(transport);
         await transport.handleRequest(req, res);
-      } else if (url.pathname === "/health") {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "ok", tools: enabledToolsSet.size || "all" }));
       } else {
         res.writeHead(404);
         res.end("Not found. Use /mcp for MCP endpoint or /health for status.");
