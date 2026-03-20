@@ -16,6 +16,17 @@ import {
 } from "../types/index.js";
 import fetch from "node-fetch";
 
+/**
+ * Normalize a UUID to 8-4-4-4-12 format with hyphens.
+ * Handles: no hyphens, wrong hyphen positions, or already correct.
+ */
+function nid(id: string): string {
+  if (!id) return id;
+  const clean = id.replace(/[-\s]/g, "");
+  if (!/^[0-9a-fA-F]{32}$/.test(clean)) return id;
+  return `${clean.slice(0,8)}-${clean.slice(8,12)}-${clean.slice(12,16)}-${clean.slice(16,20)}-${clean.slice(20)}`;
+}
+
 export class NotionClientWrapper {
   private notionToken: string;
   private baseUrl: string = "https://api.notion.com/v1";
@@ -37,7 +48,7 @@ export class NotionClientWrapper {
     const body = { children };
 
     const response = await fetch(
-      `${this.baseUrl}/blocks/${block_id}/children`,
+      `${this.baseUrl}/blocks/${nid(block_id)}/children`,
       {
         method: "PATCH",
         headers: this.headers,
@@ -49,7 +60,7 @@ export class NotionClientWrapper {
   }
 
   async retrieveBlock(block_id: string): Promise<BlockResponse> {
-    const response = await fetch(`${this.baseUrl}/blocks/${block_id}`, {
+    const response = await fetch(`${this.baseUrl}/blocks/${nid(block_id)}`, {
       method: "GET",
       headers: this.headers,
     });
@@ -67,7 +78,7 @@ export class NotionClientWrapper {
     if (page_size) params.append("page_size", page_size.toString());
 
     const response = await fetch(
-      `${this.baseUrl}/blocks/${block_id}/children?${params}`,
+      `${this.baseUrl}/blocks/${nid(block_id)}/children?${params}`,
       {
         method: "GET",
         headers: this.headers,
@@ -78,7 +89,7 @@ export class NotionClientWrapper {
   }
 
   async deleteBlock(block_id: string): Promise<BlockResponse> {
-    const response = await fetch(`${this.baseUrl}/blocks/${block_id}`, {
+    const response = await fetch(`${this.baseUrl}/blocks/${nid(block_id)}`, {
       method: "DELETE",
       headers: this.headers,
     });
@@ -90,7 +101,7 @@ export class NotionClientWrapper {
     block_id: string,
     block: Partial<BlockResponse>
   ): Promise<BlockResponse> {
-    const response = await fetch(`${this.baseUrl}/blocks/${block_id}`, {
+    const response = await fetch(`${this.baseUrl}/blocks/${nid(block_id)}`, {
       method: "PATCH",
       headers: this.headers,
       body: JSON.stringify(block),
@@ -100,7 +111,7 @@ export class NotionClientWrapper {
   }
 
   async retrievePage(page_id: string): Promise<PageResponse> {
-    const response = await fetch(`${this.baseUrl}/pages/${page_id}`, {
+    const response = await fetch(`${this.baseUrl}/pages/${nid(page_id)}`, {
       method: "GET",
       headers: this.headers,
     });
@@ -114,7 +125,7 @@ export class NotionClientWrapper {
   ): Promise<PageResponse> {
     const body = { properties };
 
-    const response = await fetch(`${this.baseUrl}/pages/${page_id}`, {
+    const response = await fetch(`${this.baseUrl}/pages/${nid(page_id)}`, {
       method: "PATCH",
       headers: this.headers,
       body: JSON.stringify(body),
@@ -139,7 +150,7 @@ export class NotionClientWrapper {
   }
 
   async retrieveUser(user_id: string): Promise<UserResponse> {
-    const response = await fetch(`${this.baseUrl}/users/${user_id}`, {
+    const response = await fetch(`${this.baseUrl}/users/${nid(user_id)}`, {
       method: "GET",
       headers: this.headers,
     });
@@ -188,7 +199,7 @@ export class NotionClientWrapper {
     if (page_size) body.page_size = page_size;
 
     const response = await fetch(
-      `${this.baseUrl}/databases/${database_id}/query`,
+      `${this.baseUrl}/databases/${nid(database_id)}/query`,
       {
         method: "POST",
         headers: this.headers,
@@ -200,7 +211,7 @@ export class NotionClientWrapper {
   }
 
   async retrieveDatabase(database_id: string): Promise<DatabaseResponse> {
-    const response = await fetch(`${this.baseUrl}/databases/${database_id}`, {
+    const response = await fetch(`${this.baseUrl}/databases/${nid(database_id)}`, {
       method: "GET",
       headers: this.headers,
     });
@@ -219,7 +230,7 @@ export class NotionClientWrapper {
     if (description) body.description = description;
     if (properties) body.properties = properties;
 
-    const response = await fetch(`${this.baseUrl}/databases/${database_id}`, {
+    const response = await fetch(`${this.baseUrl}/databases/${nid(database_id)}`, {
       method: "PATCH",
       headers: this.headers,
       body: JSON.stringify(body),
@@ -233,7 +244,7 @@ export class NotionClientWrapper {
     properties: Record<string, any>
   ): Promise<PageResponse> {
     const body = {
-      parent: { database_id },
+      parent: { database_id: nid(database_id) },
       properties,
     };
 
@@ -255,7 +266,7 @@ export class NotionClientWrapper {
     icon?: { type: string; emoji?: string }
   ): Promise<PageResponse> {
     const body: Record<string, any> = {
-      parent: { [parent_type]: parent_id },
+      parent: { [parent_type]: nid(parent_id) },
     };
 
     if (parent_type === "page_id") {
@@ -294,10 +305,10 @@ export class NotionClientWrapper {
   ): Promise<CommentResponse> {
     const body: Record<string, any> = { rich_text };
     if (parent) {
-      body.parent = parent;
+      body.parent = { page_id: nid(parent.page_id) };
     }
     if (discussion_id) {
-      body.discussion_id = discussion_id;
+      body.discussion_id = nid(discussion_id);
     }
 
     const response = await fetch(`${this.baseUrl}/comments`, {
@@ -315,7 +326,7 @@ export class NotionClientWrapper {
     page_size?: number
   ): Promise<ListResponse> {
     const params = new URLSearchParams();
-    params.append("block_id", block_id);
+    params.append("block_id", nid(block_id));
     if (start_cursor) params.append("start_cursor", start_cursor);
     if (page_size) params.append("page_size", page_size.toString());
 
