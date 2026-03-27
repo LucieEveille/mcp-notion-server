@@ -1,21 +1,26 @@
 #!/usr/bin/env node
 /**
- * Notion MCP Server — 露露的精简版
+ * Notion MCP Server — Token-optimized fork
  * 
- * 支持两种传输模式：
- * - stdio: 本地运行（默认）
- * - http:  远程部署，Streamable HTTP，供 Claude 等客户端远程连接
+ * A lightweight fork of suekou/mcp-notion-server with aggressively
+ * slimmed-down tool schemas (~63% smaller) and Streamable HTTP transport
+ * for remote deployment.
  *
- * 命令行参数：
- * --transport: "stdio" (默认) 或 "http"
- * --port: HTTP 端口（默认 3000，也读 PORT 环境变量）
- * --enabledTools: 逗号分隔的工具列表（不指定则启用全部）
+ * Supports two transport modes:
+ * - stdio: Local use with Claude Desktop, Cursor, etc. (default)
+ * - http:  Remote deployment via Streamable HTTP
  *
- * 环境变量：
- * - NOTION_API_TOKEN: 必填，Notion Integration Token
- * - NOTION_MARKDOWN_CONVERSION: 可选，"true" 启用 Markdown 转换（省 token）
- * - PORT: HTTP 端口（被 --port 覆盖）
- * - MCP_AUTH_TOKEN: 可选，HTTP 模式的 Bearer Token 鉴权
+ * Command-line arguments:
+ * --transport: "stdio" (default) or "http"
+ * --port: HTTP port (default 3000, also reads PORT env var)
+ * --enabledTools: Comma-separated list of tools to enable
+ *
+ * Environment variables:
+ * - NOTION_API_TOKEN: Required — Notion Integration Token
+ * - NOTION_MARKDOWN_CONVERSION: Optional — "true" to enable Markdown output
+ * - PORT: HTTP port (overridden by --port)
+ * - ENABLED_TOOLS: Comma-separated tool list (overridden by --enabledTools)
+ * - MCP_AUTH_TOKEN: Optional — Bearer token for HTTP auth
  */
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";

@@ -1,7 +1,7 @@
 {
   "name": "@lucie-eveille/mcp-notion-server",
-  "version": "2.0.0",
-  "description": "露露的精简版 Notion MCP Server — block 级精准操作 + Streamable HTTP 远程连接",
+  "version": "2.1.0",
+  "description": "A token-optimized Notion MCP server with 63% smaller schemas, Streamable HTTP transport, and additional tools. Forked from suekou/mcp-notion-server.",
   "license": "MIT",
   "author": "Lucie Éveille (forked from suekou/mcp-notion-server)",
   "type": "module",

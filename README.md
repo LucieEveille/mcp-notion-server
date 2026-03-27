@@ -1,110 +1,111 @@
-# Notion MCP Server
+# Notion MCP Server — 精简版
 
-MCP Server for the Notion API, enabling LLM to interact with Notion workspaces. Additionally, it employs Markdown conversion to reduce context size when communicating with LLMs, optimizing token usage and making interactions more efficient.
+一个**省 token** 的 Notion MCP Server，fork 自 [`suekou/mcp-notion-server`](https://github.com/suekou/mcp-notion-server)，对工具 schema 做了大幅瘦身，并新增了远程 HTTP 部署和页面创建等功能。
 
-## Setup
+适合自建 AI 系统、在意 token 开销的开发者。
 
-Here is a detailed explanation of the steps mentioned above in the following articles:
+---
 
-- English Version: https://dev.to/suekou/operating-notion-via-claude-desktop-using-mcp-c0h
-- Japanese Version: https://qiita.com/suekou/items/44c864583f5e3e6325d9
+## 为什么要用这个 Fork？
 
-1. **Create a Notion Integration**:
+MCP 工具的 schema 会作为上下文注入每一轮对话——不管你这轮用不用 Notion，每条消息都在为它买单。
 
-   - Visit the [Notion Your Integrations page](https://www.notion.so/profile/integrations).
-   - Click "New Integration".
-   - Name your integration and select appropriate permissions (e.g., "Read content", "Update content").
+三个 Notion MCP Server 的 token 开销对比：
 
-2. **Retrieve the Secret Key**:
+| 版本 | 工具数 | Schema 体积 | 相比官方 |
+|---|---|---|---|
+| [**Notion 官方 MCP**](https://github.com/makenotion/notion-mcp-server) | 30+ | ~40,000+ tokens | — |
+| [**suekou/mcp-notion-server**](https://github.com/suekou/mcp-notion-server)（上游） | 19 | ~27,700 tokens | -31% |
+| **本项目**（13 工具 + Schema 瘦身） | 13 | **~10,130 tokens** | **-75%** |
 
-   - Copy the "Internal Integration Token" from your integration.
-   - This token will be used for authentication.
+两个优化手段叠加实现的：
 
-3. **Add the Integration to Your Workspace**:
+| 优化手段 | 效果 | 说明 |
+|---|---|---|
+| **工具过滤**（`ENABLED_TOOLS`） | 19 → 13 个工具 | 启动时只注册你需要的工具 |
+| **Schema 瘦身**（`common.ts`） | 373 → 155 行 | 删除只读字段、未使用的样式、颜色枚举 |
 
-   - Open the page or database you want the integration to access in Notion.
-   - Click the "···" button in the top right corner.
-   - Click the "Connections" button, and select the the integration you created in step 1 above.
+代码逻辑和上游完全一致——相同的 Notion API 版本、相同的工具名、相同的请求/响应格式。
 
-4. **Configure Claude Desktop**:
-   Add the following to your `claude_desktop_config.json`:
+### Schema 改了什么
 
-```json
-{
-  "mcpServers": {
-    "notion": {
-      "command": "npx",
-      "args": ["-y", "@suekou/mcp-notion-server"],
-      "env": {
-        "NOTION_API_TOKEN": "your-integration-token"
-      }
-    }
-  }
-}
-```
+`blockObjectSchema` 和 `richTextObjectSchema` 是 token 大户，每个写入工具都会嵌入它们。
 
-or
+**富文本（Rich Text）：** 删除了 `href`、`plain_text`（只读字段）、`strikethrough`、`underline`、`color`（18 个颜色枚举值）。保留 `bold`、`italic`、`code`。
 
-```json
-{
-  "mcpServers": {
-    "notion": {
-      "command": "node",
-      "args": ["your-built-file-path"],
-      "env": {
-        "NOTION_API_TOKEN": "your-integration-token"
-      }
-    }
-  }
-}
-```
+**区块（Block）：** 删除了每种区块各自的 `color` 枚举（7 种区块 × 18 个值 = 126 个枚举项），删除标题的 `is_toggleable`。抽取了 `richTextArrayProp` 和 `childrenProp` 共享变量，消除重复定义。
 
-## Environment Variables
+**新增了 4 种区块类型：** `quote`（引用）、`callout`（标注）、`to_do`（待办）、`toggle`（折叠）——上游没有这些。
 
-- `NOTION_API_TOKEN` (required): Your Notion API integration token.
-- `NOTION_MARKDOWN_CONVERSION`: Set to "true" to enable experimental Markdown conversion. This can significantly reduce token consumption when viewing content, but may cause issues when trying to edit page content.
+---
 
-## Command Line Arguments
+## 相比上游新增了什么
 
-- `--enabledTools`: Comma-separated list of tools to enable (e.g. "notion_retrieve_page,notion_query_database"). When specified, only the listed tools will be available. If not specified, all tools are enabled.
+### 🌐 Streamable HTTP 远程部署
 
-Read-only tools example (copy-paste friendly):
+上游只支持 stdio（本地运行）。这个 fork 加了完整的 HTTP 服务器模式，可以部署到云端远程连接：
 
 ```bash
-node build/index.js --enabledTools=notion_retrieve_block,notion_retrieve_block_children,notion_retrieve_page,notion_query_database,notion_retrieve_database,notion_search,notion_list_all_users,notion_retrieve_user,notion_retrieve_bot_user,notion_retrieve_comments
+# HTTP 模式启动
+node build/index.js --transport http --port 3000
 ```
 
-## Advanced Configuration
+- `POST /mcp` — MCP 端点（无状态模式，每个请求独立创建 server+transport）
+- `GET /health` — 健康检查（不需要鉴权），返回 `{"status":"ok","tools":"all"}`
+- 支持 Bearer Token 鉴权（`MCP_AUTH_TOKEN` 环境变量）
+- 自带 CORS 头，支持跨域访问
 
-### Markdown Conversion
+### 📄 `notion_create_page` 工具
 
-By default, all responses are returned in JSON format. You can enable experimental Markdown conversion to reduce token consumption:
+上游没有创建子页面的能力。这个 fork 新增了 `notion_create_page`：
 
-```json
-{
-  "mcpServers": {
-    "notion": {
-      "command": "npx",
-      "args": ["-y", "@suekou/mcp-notion-server"],
-      "env": {
-        "NOTION_API_TOKEN": "your-integration-token",
-        "NOTION_MARKDOWN_CONVERSION": "true"
-      }
-    }
-  }
-}
+- 在任意页面下创建子页面
+- 在数据库中创建新条目
+- 一次调用就能设置标题、图标、初始内容和属性
+- 自动处理不同父级格式（`page_id` vs `database_id`）
+
+### 🎛️ `ENABLED_TOOLS` 环境变量
+
+不改代码，启动时控制注册哪些工具：
+
+```bash
+ENABLED_TOOLS=notion_retrieve_page,notion_append_block_children,notion_search
 ```
 
-or
+### 🐳 Docker 支持
+
+```bash
+docker build -t notion-mcp .
+docker run -e NOTION_API_TOKEN=ntn_xxx -p 3000:3000 notion-mcp
+```
+
+### 🔧 UUID 自动格式化
+
+所有 ID 输入会自动标准化为 `8-4-4-4-12` 格式。从 Notion URL 里复制的无连字符 ID 可以直接用。
+
+---
+
+## 快速开始
+
+### 方式一：本地运行（stdio）—— Claude Desktop / Cursor 等
+
+```bash
+git clone https://github.com/LucieEveille/mcp-notion-server.git
+cd mcp-notion-server
+npm install
+npm run build
+```
+
+在 `claude_desktop_config.json` 中添加：
 
 ```json
 {
   "mcpServers": {
     "notion": {
       "command": "node",
-      "args": ["your-built-file-path"],
+      "args": ["/你的路径/mcp-notion-server/build/index.js"],
       "env": {
-        "NOTION_API_TOKEN": "your-integration-token",
+        "NOTION_API_TOKEN": "ntn_你的token",
         "NOTION_MARKDOWN_CONVERSION": "true"
       }
     }
@@ -112,219 +113,147 @@ or
 }
 ```
 
-When `NOTION_MARKDOWN_CONVERSION` is set to `"true"`, responses will be converted to Markdown format (when `format` parameter is set to `"markdown"`), making them more human-readable and significantly reducing token consumption. However, since this feature is experimental, it may cause issues when trying to edit page content as the original structure is lost in conversion.
+### 方式二：远程部署（HTTP）—— 自建服务器
 
-You can control the format on a per-request basis by setting the `format` parameter to either `"json"` or `"markdown"` in your tool calls:
+```bash
+# 用 Docker
+docker build -t notion-mcp .
+docker run -e NOTION_API_TOKEN=ntn_xxx -p 3000:3000 notion-mcp
 
-- Use `"markdown"` for better readability when only viewing content
-- Use `"json"` when you need to modify the returned content
-
-## Troubleshooting
-
-If you encounter permission errors:
-
-1. Ensure the integration has the required permissions.
-2. Verify that the integration is invited to the relevant pages or databases.
-3. Confirm the token and configuration are correctly set in `claude_desktop_config.json`.
-
-## Project Structure
-
-The project is organized in a modular way to improve maintainability and readability:
-
-```
-./
-├── src/
-│   ├── index.ts              # Entry point and command-line handling
-│   ├── client/
-│   │   └── index.ts          # NotionClientWrapper class for API interactions
-│   ├── server/
-│   │   └── index.ts          # MCP server setup and request handling
-│   ├── types/
-│   │   ├── index.ts          # Type exports
-│   │   ├── args.ts           # Tool argument interfaces
-│   │   ├── common.ts         # Common schema definitions
-│   │   ├── responses.ts      # API response type definitions
-│   │   └── schemas.ts        # Tool schema definitions
-│   ├── utils/
-│   │   └── index.ts          # Utility functions
-│   └── markdown/
-│       └── index.ts          # Markdown conversion utilities
+# 或者直接跑
+NOTION_API_TOKEN=ntn_xxx npm start
 ```
 
-### Directory Descriptions
+MCP 客户端连接 `http://你的服务器:3000/mcp` 即可。
 
-- **index.ts**: Application entry point. Parses command-line arguments and starts the server.
-- **client/**: Module responsible for communication with the Notion API.
-  - **index.ts**: NotionClientWrapper class implements all API calls.
-- **server/**: MCP server implementation.
-  - **index.ts**: Processes requests received from Claude and calls appropriate client methods.
-- **types/**: Type definition module.
-  - **index.ts**: Exports for all types.
-  - **args.ts**: Interface definitions for tool arguments.
-  - **common.ts**: Definitions for common schemas (ID formats, rich text, etc.).
-  - **responses.ts**: Type definitions for Notion API responses.
-  - **schemas.ts**: Definitions for MCP tool schemas.
-- **utils/**: Utility functions.
-  - **index.ts**: Functions like filtering enabled tools.
-- **markdown/**: Markdown conversion functionality.
-  - **index.ts**: Logic for converting JSON responses to Markdown format.
+### 方式三：只启用你需要的工具
 
-## Tools
+```bash
+NOTION_API_TOKEN=ntn_xxx \
+ENABLED_TOOLS=notion_retrieve_page,notion_retrieve_block_children,notion_append_block_children,notion_create_page,notion_search \
+npm start
+```
 
-All tools support the following optional parameter:
+---
 
-- `format` (string, "json" or "markdown", default: "markdown"): Controls the response format. Use "markdown" for human-readable output, "json" for programmatic access to the original data structure. Note: Markdown conversion only works when the `NOTION_MARKDOWN_CONVERSION` environment variable is set to "true".
+## 环境变量
 
-1. `notion_append_block_children`
+| 变量 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `NOTION_API_TOKEN` | **是** | — | Notion Integration Token |
+| `NOTION_MARKDOWN_CONVERSION` | 否 | `false` | 设为 `"true"` 返回 Markdown 格式（更省 token） |
+| `ENABLED_TOOLS` | 否 | 全部 | 逗号分隔的工具名列表，只注册列出的工具 |
+| `PORT` | 否 | `3000` | HTTP 服务端口 |
+| `MCP_AUTH_TOKEN` | 否 | — | HTTP 端点的 Bearer Token 鉴权 |
 
-   - Append child blocks to a parent block.
-   - Required inputs:
-     - `block_id` (string): The ID of the parent block.
-     - `children` (array): Array of block objects to append.
-   - Returns: Information about the appended blocks.
+## 命令行参数
 
-2. `notion_retrieve_block`
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--transport` | `stdio` | `"stdio"` 本地模式，`"http"` 远程模式 |
+| `--port` | `3000` | HTTP 端口（覆盖 `PORT` 环境变量） |
+| `--enabledTools` | 全部 | 逗号分隔的工具列表（覆盖 `ENABLED_TOOLS` 环境变量） |
 
-   - Retrieve information about a specific block.
-   - Required inputs:
-     - `block_id` (string): The ID of the block to retrieve.
-   - Returns: Detailed information about the block.
+---
 
-3. `notion_retrieve_block_children`
+## 工具列表
 
-   - Retrieve the children of a specific block.
-   - Required inputs:
-     - `block_id` (string): The ID of the parent block.
-   - Optional inputs:
-     - `start_cursor` (string): Cursor for the next page of results.
-     - `page_size` (number, default: 100, max: 100): Number of blocks to retrieve.
-   - Returns: List of child blocks.
+所有工具支持可选参数 `format`（`"json"` 或 `"markdown"`，默认 `"markdown"`）。Markdown 转换需要设置 `NOTION_MARKDOWN_CONVERSION=true`。
 
-4. `notion_delete_block`
+### 区块操作
 
-   - Delete a specific block.
-   - Required inputs:
-     - `block_id` (string): The ID of the block to delete.
-   - Returns: Confirmation of the deletion.
+| 工具 | 说明 |
+|---|---|
+| `notion_append_block_children` | 向父级区块追加子区块，支持 `after` 参数指定插入位置 |
+| `notion_retrieve_block_children` | 获取区块的子区块列表，支持分页 |
+| `notion_update_block` | 更新区块内容 |
+| `notion_delete_block` | 删除（归档）区块 |
+| `notion_retrieve_block` | 获取单个区块的元数据 |
 
-5. `notion_retrieve_page`
+### 页面操作
 
-   - Retrieve information about a specific page.
-   - Required inputs:
-     - `page_id` (string): The ID of the page to retrieve.
-   - Returns: Detailed information about the page.
+| 工具 | 说明 |
+|---|---|
+| `notion_retrieve_page` | 获取页面元数据和属性 |
+| `notion_create_page` | **新增。** 创建子页面或数据库条目，支持标题、图标和初始内容 |
+| `notion_update_page_properties` | 更新页面或数据库条目的属性 |
 
-6. `notion_update_page_properties`
+### 数据库操作
 
-   - Update properties of a page.
-   - Required inputs:
-     - `page_id` (string): The ID of the page to update.
-     - `properties` (object): Properties to update.
-   - Returns: Information about the updated page.
+| 工具 | 说明 |
+|---|---|
+| `notion_query_database` | 查询数据库，支持筛选和排序 |
+| `notion_create_database_item` | 在数据库中创建新条目 |
+| `notion_retrieve_database` | 获取数据库结构和元数据 |
+| `notion_create_database` | 创建新数据库 |
+| `notion_update_database` | 更新数据库标题、描述或属性 |
 
-7. `notion_create_database`
+### 搜索
 
-   - Create a new database.
-   - Required inputs:
-     - `parent` (object): Parent object of the database.
-     - `properties` (object): Property schema of the database.
-   - Optional inputs:
-     - `title` (array): Title of the database as a rich text array.
-   - Returns: Information about the created database.
+| 工具 | 说明 |
+|---|---|
+| `notion_search` | 按标题搜索页面和数据库 |
 
-8. `notion_query_database`
+### 评论
 
-   - Query a database.
-   - Required inputs:
-     - `database_id` (string): The ID of the database to query.
-   - Optional inputs:
-     - `filter` (object): Filter conditions.
-     - `sorts` (array): Sorting conditions.
-     - `start_cursor` (string): Cursor for the next page of results.
-     - `page_size` (number, default: 100, max: 100): Number of results to retrieve.
-   - Returns: List of results from the query.
+| 工具 | 说明 |
+|---|---|
+| `notion_create_comment` | 在页面或讨论串中创建评论 |
+| `notion_retrieve_comments` | 获取页面或区块的未解决评论 |
 
-9. `notion_retrieve_database`
+### 用户操作
 
-   - Retrieve information about a specific database.
-   - Required inputs:
-     - `database_id` (string): The ID of the database to retrieve.
-   - Returns: Detailed information about the database.
+| 工具 | 说明 |
+|---|---|
+| `notion_list_all_users` | 列出工作区所有用户（需要企业版） |
+| `notion_retrieve_user` | 按 ID 获取用户信息（需要企业版） |
+| `notion_retrieve_bot_user` | 获取当前 token 对应的 bot 用户信息 |
 
-10. `notion_update_database`
+---
 
-    - Update information about a database.
-    - Required inputs:
-      - `database_id` (string): The ID of the database to update.
-    - Optional inputs:
-      - `title` (array): New title for the database.
-      - `description` (array): New description for the database.
-      - `properties` (object): Updated property schema.
-    - Returns: Information about the updated database.
+## 项目结构
 
-11. `notion_create_database_item`
+```
+src/
+├── index.ts              # 入口，命令行参数解析
+├── client/
+│   └── index.ts          # NotionClientWrapper — 所有 Notion API 调用
+├── server/
+│   └── index.ts          # MCP 服务器，stdio + HTTP 双模式
+├── types/
+│   ├── index.ts          # 类型导出
+│   ├── args.ts           # 工具参数接口定义
+│   ├── common.ts         # 精简后的 schema 定义（核心优化点）
+│   ├── responses.ts      # Notion API 响应类型
+│   └── schemas.ts        # MCP 工具 schema 定义
+├── utils/
+│   └── index.ts          # 工具过滤等辅助函数
+└── markdown/
+    └── index.ts          # JSON → Markdown 转换
+```
 
-    - Create a new item in a Notion database.
-    - Required inputs:
-      - `database_id` (string): The ID of the database to add the item to.
-      - `properties` (object): The properties of the new item. These should match the database schema.
-    - Returns: Information about the newly created item.
+---
 
-12. `notion_search`
+## Notion 集成配置
 
-    - Search pages or databases by title.
-    - Optional inputs:
-      - `query` (string): Text to search for in page or database titles.
-      - `filter` (object): Criteria to limit results to either only pages or only databases.
-      - `sort` (object): Criteria to sort the results
-      - `start_cursor` (string): Pagination start cursor.
-      - `page_size` (number, default: 100, max: 100): Number of results to retrieve.
-    - Returns: List of matching pages or databases.
+1. 访问 [Notion Integrations](https://www.notion.so/profile/integrations)，创建新集成
+2. 复制 **Internal Integration Token**（以 `ntn_` 开头）
+3. 在 Notion 中打开你要访问的页面/数据库 → 点右上角 `···` → **连接** → 添加你的集成
 
-13. `notion_list_all_users`
+## 常见问题
 
-    - List all users in the Notion workspace.
-    - Note: This function requires upgrading to the Notion Enterprise plan and using an Organization API key to avoid permission errors.
-    - Optional inputs:
-      - start_cursor (string): Pagination start cursor for listing users.
-      - page_size (number, max: 100): Number of users to retrieve.
-    - Returns: A paginated list of all users in the workspace.
+- **权限错误：** 确认你的集成已经连接到对应的页面/数据库。子页面会继承父页面的连接权限。
+- **找不到工具：** 如果设置了 `ENABLED_TOOLS`，检查工具名是否在列表中。
+- **HTTP 401：** 确认 `MCP_AUTH_TOKEN` 环境变量和请求头中的 `Authorization: Bearer <token>` 一致。
 
-14. `notion_retrieve_user`
+---
 
-    - Retrieve a specific user by user_id in Notion.
-    - Note: This function requires upgrading to the Notion Enterprise plan and using an Organization API key to avoid permission errors.
-    - Required inputs:
-      - user_id (string): The ID of the user to retrieve.
-    - Returns: Detailed information about the specified user.
+## 致谢
 
-15. `notion_retrieve_bot_user`
+本项目 fork 自 [`suekou/mcp-notion-server`](https://github.com/suekou/mcp-notion-server)，感谢原作者提供了优秀的 Notion MCP 基础实现。Schema 瘦身、HTTP 传输和 `create_page` 工具是本 fork 的新增内容。
 
-    - Retrieve the bot user associated with the current token in Notion.
-    - Returns: Information about the bot user, including details of the person who authorized the integration.
+## 协议
 
-16. `notion_create_comment`
+MIT — 详见 [LICENSE](LICENSE)。
 
-    - Create a comment in Notion.
-    - Requires the integration to have 'insert comment' capabilities.
-    - Either specify a `parent` object with a `page_id` or a `discussion_id`, but not both.
-    - Required inputs:
-      - `rich_text` (array): Array of rich text objects representing the comment content.
-    - Optional inputs:
-      - `parent` (object): Must include `page_id` if used.
-      - `discussion_id` (string): An existing discussion thread ID.
-    - Returns: Information about the created comment.
-
-17. `notion_retrieve_comments`
-    - Retrieve a list of unresolved comments from a Notion page or block.
-    - Requires the integration to have 'read comment' capabilities.
-    - Required inputs:
-      - `block_id` (string): The ID of the block or page whose comments you want to retrieve.
-    - Optional inputs:
-      - `start_cursor` (string): Pagination start cursor.
-      - `page_size` (number, max: 100): Number of comments to retrieve.
-    - Returns: A paginated list of comments associated with the specified block or page.
-
-## License
-
-This MCP server is licensed under the MIT License. This means you are free to use, modify, and distribute the software, subject to the terms and conditions of the MIT License. For more details, please see the LICENSE file in the project repository.
+原始版权 (c) 2024 suekou。Fork 修改 (c) 2025–2026 Lucie Éveille。
