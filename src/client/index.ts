@@ -43,9 +43,11 @@ export class NotionClientWrapper {
 
   async appendBlockChildren(
     block_id: string,
-    children: Partial<BlockResponse>[]
+    children: Partial<BlockResponse>[],
+    after?: string
   ): Promise<BlockResponse> {
-    const body = { children };
+    const body: Record<string, any> = { children };
+    if (after) body.after = nid(after);
 
     const response = await fetch(
       `${this.baseUrl}/blocks/${nid(block_id)}/children`,
@@ -75,7 +77,7 @@ export class NotionClientWrapper {
   ): Promise<ListResponse> {
     const params = new URLSearchParams();
     if (start_cursor) params.append("start_cursor", start_cursor);
-    if (page_size) params.append("page_size", page_size.toString());
+    if (page_size !== undefined) params.append("page_size", page_size.toString());
 
     const response = await fetch(
       `${this.baseUrl}/blocks/${nid(block_id)}/children?${params}`,
@@ -140,7 +142,7 @@ export class NotionClientWrapper {
   ): Promise<ListResponse> {
     const params = new URLSearchParams();
     if (start_cursor) params.append("start_cursor", start_cursor);
-    if (page_size) params.append("page_size", page_size.toString());
+    if (page_size !== undefined) params.append("page_size", page_size.toString());
 
     const response = await fetch(`${this.baseUrl}/users?${params.toString()}`, {
       method: "GET",
@@ -196,7 +198,7 @@ export class NotionClientWrapper {
     if (filter) body.filter = filter;
     if (sorts) body.sorts = sorts;
     if (start_cursor) body.start_cursor = start_cursor;
-    if (page_size) body.page_size = page_size;
+    if (page_size !== undefined) body.page_size = page_size;
 
     const response = await fetch(
       `${this.baseUrl}/databases/${nid(database_id)}/query`,
@@ -328,7 +330,7 @@ export class NotionClientWrapper {
     const params = new URLSearchParams();
     params.append("block_id", nid(block_id));
     if (start_cursor) params.append("start_cursor", start_cursor);
-    if (page_size) params.append("page_size", page_size.toString());
+    if (page_size !== undefined) params.append("page_size", page_size.toString());
 
     const response = await fetch(
       `${this.baseUrl}/comments?${params.toString()}`,
@@ -356,7 +358,7 @@ export class NotionClientWrapper {
     if (filter) body.filter = filter;
     if (sort) body.sort = sort;
     if (start_cursor) body.start_cursor = start_cursor;
-    if (page_size) body.page_size = page_size;
+    if (page_size !== undefined) body.page_size = page_size;
 
     const response = await fetch(`${this.baseUrl}/search`, {
       method: "POST",
