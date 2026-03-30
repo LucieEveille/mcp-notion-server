@@ -274,7 +274,7 @@ export class NotionClientWrapper {
     if (parent_type === "page_id") {
       // Page parent: title goes in properties as a title property
       body.properties = {
-        title: [{ text: { content: title } }],
+        title: { title: [{ text: { content: title } }] },
         ...properties,
       };
     } else {

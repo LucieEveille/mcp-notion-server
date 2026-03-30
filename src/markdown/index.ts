@@ -7,6 +7,8 @@ import {
   DatabaseResponse,
   BlockResponse,
   ListResponse,
+  UserResponse,
+  CommentResponse,
   RichTextItemResponse,
   PageProperty,
 } from "../types/index.js";
@@ -30,6 +32,10 @@ export function convertToMarkdown(response: NotionResponse): string {
       return convertBlockToMarkdown(response as BlockResponse);
     case "list":
       return convertListToMarkdown(response as ListResponse);
+    case "user":
+      return convertUserToMarkdown(response as UserResponse);
+    case "comment":
+      return convertCommentToMarkdown(response as CommentResponse);
     default:
       // Return JSON string if conversion is not possible
       return `\`\`\`json\n${JSON.stringify(response, null, 2)}\n\`\`\``;
@@ -266,6 +272,35 @@ function convertListToMarkdown(list: ListResponse): string {
     }
   }
 
+  return markdown;
+}
+
+/**
+ * Converts a Notion user to Markdown
+ */
+function convertUserToMarkdown(user: UserResponse): string {
+  let markdown = `# User: ${user.name || "Unknown"}\n\n`;
+  markdown += `| Field | Value |\n`;
+  markdown += `|-------|-------|\n`;
+  markdown += `| ID | \`${user.id}\` |\n`;
+  if (user.type) markdown += `| Type | ${user.type} |\n`;
+  if (user.person?.email) markdown += `| Email | ${user.person.email} |\n`;
+  if (user.avatar_url) markdown += `| Avatar | ${user.avatar_url} |\n`;
+  return markdown;
+}
+
+/**
+ * Converts a Notion comment to Markdown
+ */
+function convertCommentToMarkdown(comment: CommentResponse): string {
+  const text = extractRichText(comment.rich_text || []);
+  let markdown = `**Comment** (\`${comment.id}\`)\n\n`;
+  markdown += `> ${text}\n\n`;
+  markdown += `- Created: ${comment.created_time}\n`;
+  markdown += `- Author: \`${comment.created_by?.id || "unknown"}\`\n`;
+  if (comment.discussion_id) {
+    markdown += `- Discussion: \`${comment.discussion_id}\`\n`;
+  }
   return markdown;
 }
 
